@@ -1,24 +1,22 @@
-const homeScreen = document.getElementById('homeScreen');
-const roomScreen = document.getElementById('roomScreen');
-const createRoomBtn = document.getElementById('createRoomBtn');
-const joinRoomBtn = document.getElementById('joinRoomBtn');
-const leaveRoomBtn = document.getElementById('leaveRoomBtn');
-const roomCodeInput = document.getElementById('roomCodeInput');
-const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+const socket = io();
+
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
-const waitingMessage = document.getElementById('waitingMessage');
-const statusMessage = document.getElementById('statusMessage');
-const toggleVideoBtn = document.getElementById('toggleVideoBtn');
-const toggleAudioBtn = document.getElementById('toggleAudioBtn');
-const shareScreenBtn = document.getElementById('shareScreenBtn');
+const createRoomBtn = document.getElementById('createRoom');
+const joinRoomBtn = document.getElementById('joinRoom');
+const shareScreenBtn = document.getElementById('shareScreen');
+const stopShareBtn = document.getElementById('stopShare');
+const roomCodeInput = document.getElementById('roomCode');
+const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+const statusDiv = document.getElementById('status');
+const landingPage = document.getElementById('landingPage');
+const videoContainer = document.getElementById('videoContainer');
 
-let ws = null;
-let peerConnection = null;
-let localStream = null;
-let currentRoomCode = null;
-let userId = generateUserId();
-let isHost = false;
+let localStream;
+let remoteStream;
+let peerConnection;
+let currentRoom;
+let isScreenSharing = false;
 
 const configuration = {
     iceServers: [
@@ -43,341 +41,252 @@ const configuration = {
             username: 'openrelayproject',
             credential: 'openrelayproject'
         }
-    ]
+    ],
+    iceCandidatePoolSize: 10
 };
 
-// Определяем WebSocket URL
-const WS_URL = window.location.protocol === 'https:' 
-    ? `wss://${window.location.host}` 
-    : `ws://${window.location.host}`;
-
-function generateUserId() {
-    return Math.random().toString(36).substring(2, 15);
-}
-
-function connectWebSocket() {
-    ws = new WebSocket(WS_URL);
-
-    ws.onopen = () => {
-        console.log('WebSocket подключен');
-        showStatus('Подключено к серверу', 'success');
-    };
-
-    ws.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Получено сообщение:', data.type);
-
-        switch (data.type) {
-            case 'room-created':
-                handleRoomCreated(data);
-                break;
-            case 'room-joined':
-                handleRoomJoined(data);
-                break;
-            case 'peer-joined':
-                handlePeerJoined(data);
-                break;
-            case 'offer':
-                handleOffer(data);
-                break;
-            case 'answer':
-                handleAnswer(data);
-                break;
-            case 'ice-candidate':
-                handleIceCandidate(data);
-                break;
-            case 'peer-left':
-                handlePeerLeft();
-                break;
-            case 'error':
-                showStatus(data.message, 'error');
-                break;
-        }
-    };
-
-    ws.onerror = (error) => {
-        console.error('WebSocket ошибка:', error);
-        showStatus('Ошибка подключения к серверу', 'error');
-    };
-
-    ws.onclose = () => {
-        console.log('WebSocket отключен');
-        showStatus('Соединение с сервером потеряно', 'error');
-    };
-}
-
-function showStatus(message, type = 'info') {
-    statusMessage.textContent = message;
-    statusMessage.className = `status-message ${type}`;
-    setTimeout(() => {
-        statusMessage.textContent = '';
-        statusMessage.className = 'status-message';
-    }, 3000);
-}
-
-async function getMediaStream() {
+// Запуск локального видеопотока
+async function startLocalStream() {
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: true
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+            video: true, 
+            audio: true 
         });
         localVideo.srcObject = localStream;
-        return true;
+        console.log('✅ Локальный видеопоток запущен');
+        updateStatus('✅ Камера и микрофон подключены');
     } catch (error) {
-        console.error('Ошибка доступа к камере/микрофону:', error);
-        showStatus('Не удалось получить доступ к камере/микрофону', 'error');
-        return false;
+        console.warn('⚠️ Не удалось получить доступ к камере/микрофону:', error);
+        updateStatus('⚠️ Камера недоступна. Можно использовать только демонстрацию экрана.');
+        // Создаём пустой поток, чтобы приложение продолжало работать
+        localStream = new MediaStream();
     }
 }
 
-function createPeerConnection() {
-    peerConnection = new RTCPeerConnection(ICE_SERVERS);
-
-    // Добавляем локальные треки
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    // Обработка входящих треков
-    peerConnection.ontrack = (event) => {
-        console.log('Получен удалённый трек');
-        remoteVideo.srcObject = event.streams[0];
-        waitingMessage.style.display = 'none';
-    };
-
-    // Обработка ICE кандидатов
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'ice-candidate',
-                candidate: event.candidate
-            }));
-        }
-    };
-
-    // Обработка изменения состояния соединения
-    peerConnection.onconnectionstatechange = () => {
-        console.log('Состояние соединения:', peerConnection.connectionState);
-        if (peerConnection.connectionState === 'connected') {
-            showStatus('Соединение установлено!', 'success');
-        } else if (peerConnection.connectionState === 'disconnected') {
-            showStatus('Соединение потеряно', 'error');
-        }
-    };
-}
-
+// Создание комнаты
 createRoomBtn.addEventListener('click', async () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        connectWebSocket();
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    const hasMedia = await getMediaStream();
-    if (!hasMedia) return;
-
-    isHost = true;
-    ws.send(JSON.stringify({
-        type: 'create-room',
-        userId: userId
-    }));
+    await startLocalStream();
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    currentRoom = roomCode;
+    
+    socket.emit('create-room', roomCode);
+    
+    landingPage.style.display = 'none';
+    videoContainer.style.display = 'flex';
+    roomCodeDisplay.textContent = `Код комнаты: ${roomCode}`;
+    updateStatus('🎬 Комната создана! Ждём подключения...');
 });
 
+// Присоединение к комнате
 joinRoomBtn.addEventListener('click', async () => {
     const roomCode = roomCodeInput.value.trim().toUpperCase();
     if (!roomCode) {
-        showStatus('Введите код комнаты', 'error');
+        alert('Введите код комнаты!');
         return;
     }
-
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        connectWebSocket();
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    const hasMedia = await getMediaStream();
-    if (!hasMedia) return;
-
-    isHost = false;
-    ws.send(JSON.stringify({
-        type: 'join-room',
-        roomCode: roomCode,
-        userId: userId
-    }));
-});
-
-leaveRoomBtn.addEventListener('click', () => {
-    leaveRoom();
-});
-
-function handleRoomCreated(data) {
-    currentRoomCode = data.roomCode;
-    roomCodeDisplay.textContent = data.roomCode;
-    homeScreen.classList.remove('active');
-    roomScreen.classList.add('active');
-    showStatus('Комната создана! Ждём партнёра...', 'success');
-}
-
-function handleRoomJoined(data) {
-    currentRoomCode = data.roomCode;
-    roomCodeDisplay.textContent = data.roomCode;
-    homeScreen.classList.remove('active');
-    roomScreen.classList.add('active');
-    showStatus('Подключение к комнате...', 'info');
     
-    // Гость инициирует соединение
-    createPeerConnection();
-    createOffer();
+    await startLocalStream();
+    currentRoom = roomCode;
+    
+    socket.emit('join-room', roomCode);
+    
+    landingPage.style.display = 'none';
+    videoContainer.style.display = 'flex';
+    roomCodeDisplay.textContent = `Код комнаты: ${roomCode}`;
+    updateStatus('🔗 Подключаемся к комнате...');
+});
+
+// Обработчики сокетов
+socket.on('room-created', (roomCode) => {
+    console.log('✅ Комната создана:', roomCode);
+    updateStatus('🎬 Комната создана! Поделитесь кодом с партнёром.');
+});
+
+socket.on('room-joined', async (roomCode) => {
+    console.log('✅ Присоединились к комнате:', roomCode);
+    updateStatus('🔗 Присоединились! Устанавливаем связь...');
+    await createPeerConnection();
+    await createOffer();
+});
+
+socket.on('user-joined', async (roomCode) => {
+    console.log('👤 Пользователь присоединился к комнате:', roomCode);
+    updateStatus('👤 Партнёр подключился! Устанавливаем видеосвязь...');
+    await createPeerConnection();
+});
+
+socket.on('offer', async (offer) => {
+    console.log('📩 Получен offer');
+    updateStatus('📩 Получен запрос на соединение...');
+    if (!peerConnection) {
+        await createPeerConnection();
+    }
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    socket.emit('answer', { room: currentRoom, answer });
+    updateStatus('📤 Отправлен ответ...');
+});
+
+socket.on('answer', async (answer) => {
+    console.log('📩 Получен answer');
+    updateStatus('📩 Получен ответ на соединение...');
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    updateStatus('🎥 Соединение установлено!');
+});
+
+socket.on('ice-candidate', async (candidate) => {
+    console.log('🧊 Получен ICE candidate');
+    if (peerConnection) {
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (error) {
+            console.error('❌ Ошибка добавления ICE candidate:', error);
+        }
+    }
+});
+
+socket.on('user-disconnected', () => {
+    console.log('👋 Пользователь отключился');
+    updateStatus('👋 Партнёр отключился');
+    if (remoteVideo.srcObject) {
+        remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+        remoteVideo.srcObject = null;
+    }
+});
+
+socket.on('room-full', () => {
+    alert('❌ Комната заполнена!');
+    location.reload();
+});
+
+socket.on('room-not-found', () => {
+    alert('❌ Комната не найдена! Проверьте код.');
+    location.reload();
+});
+
+// Создание peer connection
+async function createPeerConnection() {
+    console.log('🔧 Создание peer connection...');
+    peerConnection = new RTCPeerConnection(configuration);
+    
+    // Добавляем локальные треки
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+            console.log('➕ Добавлен локальный трек:', track.kind);
+        });
+    }
+    
+    // Обработка входящих треков
+    peerConnection.ontrack = (event) => {
+        console.log('📺 Получен удалённый трек:', event.track.kind);
+        if (!remoteStream) {
+            remoteStream = new MediaStream();
+            remoteVideo.srcObject = remoteStream;
+        }
+        remoteStream.addTrack(event.track);
+        updateStatus('🎥 Видеосвязь установлена!');
+    };
+    
+    // ICE candidates
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            console.log('🧊 Отправка ICE candidate');
+            socket.emit('ice-candidate', { room: currentRoom, candidate: event.candidate });
+        }
+    };
+    
+    // Отслеживание состояния соединения
+    peerConnection.onconnectionstatechange = () => {
+        console.log('🔄 Состояние соединения:', peerConnection.connectionState);
+        if (peerConnection.connectionState === 'connected') {
+            updateStatus('✅ Соединение установлено!');
+        } else if (peerConnection.connectionState === 'disconnected') {
+            updateStatus('⚠️ Соединение потеряно');
+        } else if (peerConnection.connectionState === 'failed') {
+            updateStatus('❌ Не удалось установить соединение');
+        }
+    };
+    
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('🧊 ICE состояние:', peerConnection.iceConnectionState);
+    };
 }
 
-async function handlePeerJoined(data) {
-    showStatus('Партнёр присоединился!', 'success');
-    createPeerConnection();
-}
-
+// Создание offer
 async function createOffer() {
-    try {
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        
-        ws.send(JSON.stringify({
-            type: 'offer',
-            offer: offer
-        }));
-    } catch (error) {
-        console.error('Ошибка создания offer:', error);
-    }
+    console.log('📤 Создание offer...');
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('offer', { room: currentRoom, offer });
+    updateStatus('📤 Отправлен запрос на соединение...');
 }
-
-async function handleOffer(data) {
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        ws.send(JSON.stringify({
-            type: 'answer',
-            answer: answer
-        }));
-    } catch (error) {
-        console.error('Ошибка обработки offer:', error);
-    }
-}
-
-async function handleAnswer(data) {
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-    } catch (error) {
-        console.error('Ошибка обработки answer:', error);
-    }
-}
-
-async function handleIceCandidate(data) {
-    try {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-    } catch (error) {
-        console.error('Ошибка добавления ICE кандидата:', error);
-    }
-}
-
-function handlePeerLeft() {
-    showStatus('Партнёр отключился', 'info');
-    waitingMessage.style.display = 'block';
-    remoteVideo.srcObject = null;
-    
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-}
-
-function leaveRoom() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'leave-room'
-        }));
-    }
-
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-
-    localVideo.srcObject = null;
-    remoteVideo.srcObject = null;
-    currentRoomCode = null;
-    
-    roomScreen.classList.remove('active');
-    homeScreen.classList.add('active');
-    roomCodeInput.value = '';
-}
-
-// Управление видео
-toggleVideoBtn.addEventListener('click', () => {
-    if (localStream) {
-        const videoTrack = localStream.getVideoTracks()[0];
-        videoTrack.enabled = !videoTrack.enabled;
-        toggleVideoBtn.textContent = videoTrack.enabled ? '📹' : '📹❌';
-        toggleVideoBtn.classList.toggle('active');
-    }
-});
-
-// Управление аудио
-toggleAudioBtn.addEventListener('click', () => {
-    if (localStream) {
-        const audioTrack = localStream.getAudioTracks()[0];
-        audioTrack.enabled = !audioTrack.enabled;
-        toggleAudioBtn.textContent = audioTrack.enabled ? '🎤' : '🎤❌';
-        toggleAudioBtn.classList.toggle('active');
-    }
-});
 
 // Демонстрация экрана
 shareScreenBtn.addEventListener('click', async () => {
     try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
             video: true,
             audio: true
         });
-
-        const screenTrack = screenStream.getVideoTracks()[0];
         
-        if (peerConnection) {
-            const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
-            if (sender) {
-                sender.replaceTrack(screenTrack);
-            }
+        const screenTrack = screenStream.getVideoTracks()[0];
+        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+        
+        if (sender) {
+            sender.replaceTrack(screenTrack);
         }
-
+        
         localVideo.srcObject = screenStream;
-        shareScreenBtn.classList.add('active');
-        showStatus('Демонстрация экрана началась', 'success');
-
+        isScreenSharing = true;
+        shareScreenBtn.style.display = 'none';
+        stopShareBtn.style.display = 'inline-block';
+        updateStatus('🖥️ Демонстрация экрана включена');
+        
         screenTrack.onended = () => {
-            if (localStream) {
-                const videoTrack = localStream.getVideoTracks()[0];
-                if (peerConnection) {
-                    const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
-                    if (sender) {
-                        sender.replaceTrack(videoTrack);
-                    }
-                }
-                localVideo.srcObject = localStream;
-                shareScreenBtn.classList.remove('active');
-                showStatus('Демонстрация экрана завершена', 'info');
-            }
+            stopScreenShare();
         };
     } catch (error) {
-        console.error('Ошибка демонстрации экрана:', error);
-        showStatus('Не удалось начать демонстрацию экрана', 'error');
+        console.error('❌ Ошибка демонстрации экрана:', error);
+        updateStatus('❌ Не удалось включить демонстрацию экрана');
     }
 });
 
-// Инициализация при загрузке
-window.addEventListener('load', () => {
-    connectWebSocket();
+// Остановка демонстрации экрана
+stopShareBtn.addEventListener('click', stopScreenShare);
+
+function stopScreenShare() {
+    if (localStream) {
+        const videoTrack = localStream.getVideoTracks()[0];
+        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+        
+        if (sender && videoTrack) {
+            sender.replaceTrack(videoTrack);
+        }
+        
+        localVideo.srcObject = localStream;
+    }
+    
+    isScreenSharing = false;
+    shareScreenBtn.style.display = 'inline-block';
+    stopShareBtn.style.display = 'none';
+    updateStatus('📹 Вернулись к видео с камеры');
+}
+
+// Обновление статуса
+function updateStatus(message) {
+    statusDiv.textContent = message;
+    console.log('📢', message);
+}
+
+// Очистка при закрытии страницы
+window.addEventListener('beforeunload', () => {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
+    if (peerConnection) {
+        peerConnection.close();
+    }
+    socket.disconnect();
 });
