@@ -3,66 +3,224 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Couple Watch - Смотрите фильмы вместе</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#6C63FF">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Couple Watch - Смотрите вместе</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .video-container {
+            display: none;
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .video-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 15px;
+            background: #000;
+            aspect-ratio: 16/9;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .room-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            background: #f0f0f0;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
+            margin-top: 15px;
+        }
+
+        .link:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .video-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <!-- Главный экран -->
-        <div id="homeScreen" class="screen active">
-            <div class="container">
-                <div class="logo">🍿</div>
-                <h1>Couple Watch</h1>
-                <p class="subtitle">Смотрите фильмы вместе онлайн</p>
-                
-                <input type="text" id="roomCodeInput" placeholder="Введите код комнаты" maxlength="6">
-                
-                <button id="createRoomBtn" class="btn btn-primary">
-                    🎬 Создать комнату
-                </button>
-                
-                <button id="joinRoomBtn" class="btn btn-secondary">
-                    🔗 Присоединиться
-                </button>
+    <!-- Главная страница -->
+    <div class="container" id="landingPage">
+        <div class="logo">🍿</div>
+        <h1>Couple Watch</h1>
+        <p class="subtitle">Смотрите фильмы вместе онлайн</p>
+        
+        <button class="btn btn-primary" id="createRoom">Создать комнату</button>
+        
+        <p class="subtitle" style="margin-top: 30px; margin-bottom: 10px;">Или присоединитесь к комнате</p>
+        <input type="text" id="roomCode" placeholder="Введите код комнаты" maxlength="6">
+        <button class="btn btn-secondary" id="joinRoom">Присоединиться</button>
+        
+        <a href="#" class="link">Как это работает?</a>
+    </div>
+
+    <!-- Контейнер с видео -->
+    <div class="video-container" id="videoContainer">
+        <div class="room-info" id="roomCodeDisplay"></div>
+        <div class="status" id="status">Подключение...</div>
+        
+        <div class="video-grid">
+            <div>
+                <h3 style="margin-bottom: 10px; color: #333;">Вы</h3>
+                <video id="localVideo" autoplay muted playsinline></video>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 10px; color: #333;">Партнёр</h3>
+                <video id="remoteVideo" autoplay playsinline></video>
             </div>
         </div>
 
-        <!-- Экран комнаты -->
-        <div id="roomScreen" class="screen">
-            <div class="room-header">
-                <div class="room-code">
-                    <span>Код комнаты:</span>
-                    <strong id="roomCodeDisplay"></strong>
-                </div>
-                <button id="leaveRoomBtn" class="btn-icon">❌</button>
-            </div>
-
-            <div class="video-container">
-                <div class="video-wrapper">
-                    <video id="localVideo" autoplay muted playsinline></video>
-                    <div class="video-label">Вы</div>
-                </div>
-                <div class="video-wrapper">
-                    <video id="remoteVideo" autoplay playsinline></video>
-                    <div class="video-label">Партнёр</div>
-                    <div id="waitingMessage" class="waiting">Ожидание подключения...</div>
-                </div>
-            </div>
-
-            <div class="controls">
-                <button id="toggleVideoBtn" class="control-btn">📹</button>
-                <button id="toggleAudioBtn" class="control-btn">🎤</button>
-                <button id="shareScreenBtn" class="control-btn">🖥️</button>
-            </div>
-
-            <div id="statusMessage" class="status-message"></div>
+        <div class="controls">
+            <button class="btn btn-primary" id="shareScreen">🖥️ Показать экран</button>
+            <button class="btn btn-danger" id="stopShare" style="display: none;">⏹️ Остановить показ</button>
         </div>
     </div>
 
+    <!-- ВАЖНО: Socket.IO должен загружаться ПЕРВЫМ! -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Потом уже наш код -->
     <script src="app.js"></script>
 </body>
 </html>
