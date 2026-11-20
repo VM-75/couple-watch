@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Couple Watch - Смотрите фильмы вместе</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6C63FF">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+    <div id="app">
+        <!-- Главный экран -->
+        <div id="homeScreen" class="screen active">
+            <div class="container">
+                <div class="logo">🍿</div>
+                <h1>Couple Watch</h1>
+                <p class="subtitle">Смотрите фильмы вместе онлайн</p>
+                
+                <input type="text" id="roomCodeInput" placeholder="Введите код комнаты" maxlength="6">
+                
+                <button id="createRoomBtn" class="btn btn-primary">
+                    🎬 Создать комнату
+                </button>
+                
+                <button id="joinRoomBtn" class="btn btn-secondary">
+                    🔗 Присоединиться
+                </button>
+            </div>
+        </div>
+
+        <!-- Экран комнаты -->
+        <div id="roomScreen" class="screen">
+            <div class="room-header">
+                <div class="room-code">
+                    <span>Код комнаты:</span>
+                    <strong id="roomCodeDisplay"></strong>
+                </div>
+                <button id="leaveRoomBtn" class="btn-icon">❌</button>
+            </div>
+
+            <div class="video-container">
+                <div class="video-wrapper">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                    <div class="video-label">Вы</div>
+                </div>
+                <div class="video-wrapper">
+                    <video id="remoteVideo" autoplay playsinline></video>
+                    <div class="video-label">Партнёр</div>
+                    <div id="waitingMessage" class="waiting">Ожидание подключения...</div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="toggleVideoBtn" class="control-btn">📹</button>
+                <button id="toggleAudioBtn" class="control-btn">🎤</button>
+                <button id="shareScreenBtn" class="control-btn">🖥️</button>
+            </div>
+
+            <div id="statusMessage" class="status-message"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
