@@ -1,16 +1,23 @@
 {
   "name": "couple-watch",
   "version": "1.0.0",
-  "description": "Couple Watch - приложение для совместного просмотра фильмов",
+  "description": "Couple Watch - приложение для совместного просмотра",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": ["webrtc", "video-chat", "screen-sharing"],
+  "keywords": [
+    "webrtc",
+    "video-chat",
+    "couple-watch"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.14.2"
+    "socket.io": "^4.6.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
