@@ -45,7 +45,7 @@ const configuration = {
     iceCandidatePoolSize: 10
 };
 
-// Запуск локального видеопотока
+// Запуск локального видеопотока (опционально - не блокирует если камеры нет)
 async function startLocalStream() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ 
@@ -55,16 +55,20 @@ async function startLocalStream() {
         localVideo.srcObject = localStream;
         console.log('✅ Локальный видеопоток запущен');
         updateStatus('✅ Камера и микрофон подключены');
+        return true;
     } catch (error) {
-        console.warn('⚠️ Не удалось получить доступ к камере/микрофону:', error);
-        updateStatus('⚠️ Камера недоступна. Можно использовать только демонстрацию экрана.');
+        console.warn('⚠️ Камера недоступна:', error.message);
+        updateStatus('⚠️ Камера недоступна. Используйте "Показать экран"');
+        // Создаём пустой поток, чтобы приложение работало
         localStream = new MediaStream();
+        return false;
     }
 }
 
 // Создание комнаты
 createRoomBtn.addEventListener('click', async () => {
-    await startLocalStream();
+    const hasCamera = await startLocalStream();
+    
     const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     currentRoom = roomCode;
     
@@ -73,7 +77,12 @@ createRoomBtn.addEventListener('click', async () => {
     landingPage.style.display = 'none';
     videoContainer.style.display = 'flex';
     roomCodeDisplay.textContent = `Код комнаты: ${roomCode}`;
-    updateStatus('🎬 Комната создана! Ждём подключения...');
+    
+    if (hasCamera) {
+        updateStatus('🎬 Комната создана! Поделитесь кодом с партнёром.');
+    } else {
+        updateStatus('🎬 Комната создана! Нажмите "Показать экран" для трансляции.');
+    }
 });
 
 // Присоединение к комнате
@@ -84,7 +93,7 @@ joinRoomBtn.addEventListener('click', async () => {
         return;
     }
     
-    await startLocalStream();
+    const hasCamera = await startLocalStream();
     currentRoom = roomCode;
     
     socket.emit('join-room', roomCode);
@@ -98,19 +107,18 @@ joinRoomBtn.addEventListener('click', async () => {
 // Обработчики сокетов
 socket.on('room-created', (roomCode) => {
     console.log('✅ Комната создана:', roomCode);
-    updateStatus('🎬 Комната создана! Поделитесь кодом с партнёром.');
 });
 
 socket.on('room-joined', async (roomCode) => {
     console.log('✅ Присоединились к комнате:', roomCode);
-    updateStatus('🔗 Присоединились! Устанавливаем связь...');
+    updateStatus('🔗 Установка соединения...');
     await createPeerConnection();
     await createOffer();
 });
 
 socket.on('user-joined', async (roomCode) => {
-    console.log('👤 Пользователь присоединился к комнате:', roomCode);
-    updateStatus('👤 Партнёр подключился! Устанавливаем видеосвязь...');
+    console.log('👤 Партнёр присоединился:', roomCode);
+    updateStatus('👤 Партнёр подключился! Устанавливаем связь...');
     await createPeerConnection();
 });
 
@@ -120,18 +128,28 @@ socket.on('offer', async (offer) => {
     if (!peerConnection) {
         await createPeerConnection();
     }
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-    socket.emit('answer', { room: currentRoom, answer });
-    updateStatus('📤 Отправлен ответ...');
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        socket.emit('answer', { room: currentRoom, answer });
+        updateStatus('📤 Отправлен ответ...');
+    } catch (error) {
+        console.error('❌ Ошибка обработки offer:', error);
+        updateStatus('❌ Ошибка установки соединения');
+    }
 });
 
 socket.on('answer', async (answer) => {
     console.log('📩 Получен answer');
-    updateStatus('📩 Получен ответ на соединение...');
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    updateStatus('🎥 Соединение установлено!');
+    updateStatus('📩 Получен ответ...');
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        updateStatus('✅ Соединение установлено!');
+    } catch (error) {
+        console.error('❌ Ошибка обработки answer:', error);
+        updateStatus('❌ Ошибка установки соединения');
+    }
 });
 
 socket.on('ice-candidate', async (candidate) => {
@@ -146,7 +164,7 @@ socket.on('ice-candidate', async (candidate) => {
 });
 
 socket.on('user-disconnected', () => {
-    console.log('👋 Пользователь отключился');
+    console.log('👋 Партнёр отключился');
     updateStatus('👋 Партнёр отключился');
     if (remoteVideo.srcObject) {
         remoteVideo.srcObject.getTracks().forEach(track => track.stop());
@@ -155,7 +173,7 @@ socket.on('user-disconnected', () => {
 });
 
 socket.on('room-full', () => {
-    alert('❌ Комната заполнена!');
+    alert('❌ Комната заполнена! Максимум 2 участника.');
     location.reload();
 });
 
@@ -169,12 +187,14 @@ async function createPeerConnection() {
     console.log('🔧 Создание peer connection...');
     peerConnection = new RTCPeerConnection(configuration);
     
-    // Добавляем локальные треки
-    if (localStream) {
+    // Добавляем локальные треки (если есть)
+    if (localStream && localStream.getTracks().length > 0) {
         localStream.getTracks().forEach(track => {
             peerConnection.addTrack(track, localStream);
             console.log('➕ Добавлен локальный трек:', track.kind);
         });
+    } else {
+        console.log('⚠️ Нет локальных треков для отправки');
     }
     
     // Обработка входящих треков
@@ -196,7 +216,7 @@ async function createPeerConnection() {
         }
     };
     
-    // Отслеживание состояния соединения
+    // Отслеживание состояния
     peerConnection.onconnectionstatechange = () => {
         console.log('🔄 Состояние соединения:', peerConnection.connectionState);
         if (peerConnection.connectionState === 'connected') {
@@ -205,46 +225,78 @@ async function createPeerConnection() {
             updateStatus('⚠️ Соединение потеряно');
         } else if (peerConnection.connectionState === 'failed') {
             updateStatus('❌ Не удалось установить соединение');
+        } else if (peerConnection.connectionState === 'connecting') {
+            updateStatus('🔗 Устанавливается соединение...');
         }
     };
     
     peerConnection.oniceconnectionstatechange = () => {
         console.log('🧊 ICE состояние:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'checking') {
+            updateStatus('🔍 Поиск лучшего соединения...');
+        } else if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
+            updateStatus('✅ Соединение установлено!');
+        } else if (peerConnection.iceConnectionState === 'failed') {
+            updateStatus('❌ Не удалось установить соединение. Проверьте интернет.');
+        }
     };
 }
 
 // Создание offer
 async function createOffer() {
     console.log('📤 Создание offer...');
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    socket.emit('offer', { room: currentRoom, offer });
-    updateStatus('📤 Отправлен запрос на соединение...');
+    try {
+        const offer = await peerConnection.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
+        await peerConnection.setLocalDescription(offer);
+        socket.emit('offer', { room: currentRoom, offer });
+        updateStatus('📤 Отправлен запрос на соединение...');
+    } catch (error) {
+        console.error('❌ Ошибка создания offer:', error);
+        updateStatus('❌ Ошибка создания соединения');
+    }
 }
 
 // Демонстрация экрана
 shareScreenBtn.addEventListener('click', async () => {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-            video: true,
+            video: {
+                cursor: "always"
+            },
             audio: true
         });
         
         const screenTrack = screenStream.getVideoTracks()[0];
-        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
         
-        if (sender) {
-            sender.replaceTrack(screenTrack);
+        // Если есть peer connection, заменяем видео трек
+        if (peerConnection) {
+            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender) {
+                sender.replaceTrack(screenTrack);
+                console.log('✅ Видео трек заменён на демонстрацию экрана');
+            } else {
+                // Добавляем новый трек
+                peerConnection.addTrack(screenTrack, screenStream);
+                console.log('✅ Добавлен трек демонстрации экрана');
+            }
         }
         
+        // Сохраняем старый stream для восстановления
+        const oldStream = localStream;
+        localStream = screenStream;
         localVideo.srcObject = screenStream;
+        
         isScreenSharing = true;
         shareScreenBtn.style.display = 'none';
         stopShareBtn.style.display = 'inline-block';
         updateStatus('🖥️ Демонстрация экрана включена');
         
+        // Обработка остановки демонстрации
         screenTrack.onended = () => {
-            stopScreenShare();
+            stopScreenShare(oldStream);
         };
     } catch (error) {
         console.error('❌ Ошибка демонстрации экрана:', error);
@@ -253,24 +305,39 @@ shareScreenBtn.addEventListener('click', async () => {
 });
 
 // Остановка демонстрации экрана
-stopShareBtn.addEventListener('click', stopScreenShare);
+stopShareBtn.addEventListener('click', () => {
+    stopScreenShare();
+});
 
-function stopScreenShare() {
-    if (localStream) {
-        const videoTrack = localStream.getVideoTracks()[0];
-        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-        
-        if (sender && videoTrack) {
-            sender.replaceTrack(videoTrack);
-        }
-        
+function stopScreenShare(oldStream) {
+    // Останавливаем демонстрацию экрана
+    if (localStream && isScreenSharing) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
+    
+    // Возвращаемся к камере или пустому потоку
+    if (oldStream && oldStream.getTracks().length > 0) {
+        localStream = oldStream;
         localVideo.srcObject = localStream;
+        
+        // Заменяем трек обратно на камеру
+        if (peerConnection) {
+            const videoTrack = localStream.getVideoTracks()[0];
+            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender && videoTrack) {
+                sender.replaceTrack(videoTrack);
+            }
+        }
+        updateStatus('📹 Вернулись к видео с камеры');
+    } else {
+        localStream = new MediaStream();
+        localVideo.srcObject = null;
+        updateStatus('📹 Демонстрация экрана остановлена');
     }
     
     isScreenSharing = false;
     shareScreenBtn.style.display = 'inline-block';
     stopShareBtn.style.display = 'none';
-    updateStatus('📹 Вернулись к видео с камеры');
 }
 
 // Обновление статуса
