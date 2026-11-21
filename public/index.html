@@ -8,51 +8,34 @@
 </head>
 <body>
     <!-- Стартовая страница -->
-    <div id="landingPage" class="landing-page">
-        <div class="card">
-            <div class="logo">🍿</div>
-            <h1>Couple Watch</h1>
-            <p class="subtitle">Смотрите фильмы вместе онлайн</p>
-            
-            <button id="createRoom" class="primary-btn">Создать комнату</button>
-            
-            <div class="divider">
-                <span>или</span>
-            </div>
-            
-            <input type="text" id="roomCode" placeholder="Введите код комнаты" class="input-field">
-            <button id="joinRoom" class="secondary-btn">Присоединиться</button>
-        </div>
+    <div id="landingPage">
+        <div class="logo">🍿</div>
+        <h1>Couple Watch</h1>
+        <p class="subtitle">Смотрите фильмы вместе онлайн</p>
+        
+        <button id="createRoom">Создать комнату</button>
+        
+        <div class="divider">или</div>
+        
+        <input type="text" id="roomCode" placeholder="Введите код комнаты" maxlength="6">
+        <button id="joinRoom">Присоединиться</button>
     </div>
 
-    <!-- Контейнер видео -->
-    <div id="videoContainer" class="video-container" style="display: none;">
-        <div class="room-info">
-            <div id="roomCodeDisplay" class="room-code"></div>
-            <div id="status" class="status">Готово к подключению</div>
-        </div>
-
-        <div class="videos">
-            <div class="video-wrapper">
-                <video id="localVideo" autoplay muted playsinline></video>
-                <div class="video-label">Вы</div>
-            </div>
-            
-            <div class="video-wrapper">
-                <video id="remoteVideo" autoplay playsinline></video>
-                <div class="video-label">Партнёр</div>
-            </div>
-        </div>
-
+    <!-- Контейнер с видео -->
+    <div id="videoContainer">
+        <div id="status">Подключение...</div>
+        <div id="roomCodeDisplay"></div>
+        
+        <video id="remoteVideo" autoplay playsinline></video>
+        <video id="localVideo" autoplay playsinline muted></video>
+        
         <div class="controls">
-            <button id="shareScreen" class="control-btn">🖥️ Показать экран</button>
-            <button id="stopShare" class="control-btn" style="display: none;">⏹️ Остановить показ</button>
+            <button id="shareScreen">🖥️ Показать экран</button>
+            <button id="stopShare">⏹️ Остановить показ</button>
         </div>
     </div>
 
-    <!-- Подключаем Socket.IO ПЕРВЫМ -->
     <script src="/socket.io/socket.io.js"></script>
-    <!-- Потом наш код -->
     <script src="app.js"></script>
 </body>
 </html>
