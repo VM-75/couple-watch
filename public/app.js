@@ -58,7 +58,6 @@ async function startLocalStream() {
     } catch (error) {
         console.warn('⚠️ Не удалось получить доступ к камере/микрофону:', error);
         updateStatus('⚠️ Камера недоступна. Можно использовать только демонстрацию экрана.');
-        // Создаём пустой поток, чтобы приложение продолжало работать
         localStream = new MediaStream();
     }
 }
