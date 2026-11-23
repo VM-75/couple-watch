@@ -102,12 +102,24 @@ async function getMediaStream() {
             video: true,
             audio: true
         });
-        localVideo.srcObject = localStream;
+
+        if (localVideo) {
+            localVideo.srcObject = localStream;
+        }
+
         return true;
     } catch (error) {
-        console.error('Ошибка доступа к камере/микрофону:', error);
-        showStatus('Не удалось получить доступ к камере/микрофону', 'error');
-        return false;
+        console.warn('Камера и микрофон недоступны:', error);
+
+        // Вход разрешён даже без камеры и микрофона
+        localStream = new MediaStream();
+
+        if (localVideo) {
+            localVideo.srcObject = localStream;
+        }
+
+        showStatus('Камера недоступна. Можно использовать демонстрацию экрана.', 'info');
+        return true;
     }
 }
 
@@ -115,9 +127,11 @@ function createPeerConnection() {
     peerConnection = new RTCPeerConnection(ICE_SERVERS);
 
     // Добавляем локальные треки
+    if (localStream && localStream.getTracks().length > 0) {
     localStream.getTracks().forEach(track => {
         peerConnection.addTrack(track, localStream);
     });
+}
 
     // Обработка входящих треков
     peerConnection.ontrack = (event) => {
